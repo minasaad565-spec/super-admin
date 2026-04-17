@@ -35,6 +35,12 @@ const ALL_MODULES = [
   {id:"j1",label:"J-1 Arrivées",icon:"📞"},
 ];
 
+const PLANS = [
+  {id:"starter",label:"Starter",color:C.info,price:"79€/mois"},
+  {id:"pro",label:"Pro",color:C.success,price:"149€/mois"},
+  {id:"enterprise",label:"Enterprise",color:C.warning,price:"Sur devis"},
+];
+
 const DEFAULT_HOTELS = [
   {
     id:"maison-soyeuse",
@@ -52,27 +58,9 @@ const DEFAULT_HOTELS = [
 
 function useResponsive(){
   const[w,setW]=useState(()=>typeof window!=="undefined"?window.innerWidth:390);
-  useEffect(()=>{
-    const h=()=>setW(window.innerWidth);
-    window.addEventListener("resize",h);
-    return()=>window.removeEventListener("resize",h);
-  },[]);
-  return{
-    isMobile:w<640,
-    isTablet:w>=640&&w<1024,
-    isDesktop:w>=1024,
-    pad:w>=1024?"40px":w>=640?"24px":"16px",
-    cols:w>=1024?3:w>=640?2:1,
-    colsMod:w>=768?2:1,
-    maxW:w>=1024?"1000px":"100%",
-  };
+  useEffect(()=>{const h=()=>setW(window.innerWidth);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);
+  return{isMobile:w<640,isTablet:w>=640&&w<1024,isDesktop:w>=1024,pad:w>=1024?"40px":w>=640?"24px":"16px",cols:w>=1024?3:w>=640?2:1,colsMod:w>=768?2:1,maxW:w>=1024?"1000px":"100%"};
 }
-
-const PLANS = [
-  {id:"starter",label:"Starter",color:C.info},
-  {id:"pro",label:"Pro",color:C.success},
-  {id:"enterprise",label:"Enterprise",color:C.warning}
-];
 
 export default function App() {
   const R = useResponsive();
@@ -80,10 +68,10 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [hotels, setHotels] = useState([]);
-  const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState(null);
   const [toast, setToast] = useState(null);
   const [showAddHotel, setShowAddHotel] = useState(false);
+  const [editHotel, setEditHotel] = useState(null);
   const [newHotel, setNewHotel] = useState({name:"",location:"",url:"",plan:"starter",maxUsers:5});
 
   const showToast = (m,t="success") => { setToast({m,t}); setTimeout(()=>setToast(null),3000); };
@@ -95,7 +83,6 @@ export default function App() {
         if(snap.exists()) setHotels(JSON.parse(snap.data().value));
         else { setHotels(DEFAULT_HOTELS); await setDoc(doc(db,"super-admin","hotels"),{value:JSON.stringify(DEFAULT_HOTELS)}); }
       } catch(e) { setHotels(DEFAULT_HOTELS); }
-      setLoaded(true);
     })();
   },[authed]);
 
@@ -108,31 +95,24 @@ export default function App() {
   const pushLicense = async (hotel) => {
     try {
       await setDoc(doc(db,"app-data","license"),{
-        value: JSON.stringify({
-          hotelId:hotel.id, active:hotel.active, modules:hotel.modules,
-          maxUsers:hotel.maxUsers, plan:hotel.plan, expiresAt:hotel.expiresAt, updatedAt:Date.now(),
-        }),
+        value: JSON.stringify({hotelId:hotel.id,active:hotel.active,modules:hotel.modules,maxUsers:hotel.maxUsers,plan:hotel.plan,expiresAt:hotel.expiresAt,updatedAt:Date.now()}),
         updatedAt: Date.now()
       });
-    } catch(e) { console.warn("pushLicense failed:",e); }
+    } catch(e) { console.warn(e); }
   };
 
   const toggleModule = (hotelId, moduleId) => {
     const updated = hotels.map(h => {
       if(h.id!==hotelId) return h;
-      const mods = h.modules.includes(moduleId) ? h.modules.filter(m=>m!==moduleId) : [...h.modules,moduleId];
+      const mods = h.modules.includes(moduleId)?h.modules.filter(m=>m!==moduleId):[...h.modules,moduleId];
       return {...h,modules:mods};
     });
-    save(updated);
-    pushLicense(updated.find(h=>h.id===hotelId));
-    showToast("Module mis à jour !");
+    save(updated); pushLicense(updated.find(h=>h.id===hotelId)); showToast("Module mis à jour !");
   };
 
   const toggleHotel = (hotelId) => {
     const updated = hotels.map(h=>h.id===hotelId?{...h,active:!h.active}:h);
-    save(updated);
-    pushLicense(updated.find(h=>h.id===hotelId));
-    showToast("Statut mis à jour !");
+    save(updated); pushLicense(updated.find(h=>h.id===hotelId)); showToast("Statut mis à jour !");
   };
 
   const addHotel = () => {
@@ -140,22 +120,24 @@ export default function App() {
     const id = newHotel.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g,"-")+"-"+Date.now();
     const hotel = {...newHotel,id,active:true,modules:ALL_MODULES.map(m=>m.id),createdAt:Date.now(),expiresAt:null};
     const updated = [...hotels,hotel];
-    save(updated);
-    setShowAddHotel(false);
-    setNewHotel({name:"",location:"",url:"",plan:"starter",maxUsers:5});
-    showToast("Établissement ajouté !");
+    save(updated); setShowAddHotel(false); setNewHotel({name:"",location:"",url:"",plan:"starter",maxUsers:5}); showToast("Établissement ajouté !");
+  };
+
+  const saveEditHotel = () => {
+    if(!editHotel) return;
+    const updated = hotels.map(h=>h.id===editHotel.id?{...h,...editHotel}:h);
+    save(updated); pushLicense(updated.find(h=>h.id===editHotel.id)); setEditHotel(null); showToast("Paramètres mis à jour !");
   };
 
   const inp = {width:"100%",padding:"10px 14px",borderRadius:10,border:`1.5px solid ${C.border}`,background:"#FAF6F1",fontFamily:F2,fontSize:14,color:C.brownDark,outline:"none",boxSizing:"border-box"};
   const lbl = {display:"block",fontFamily:F2,fontSize:11,fontWeight:600,color:C.brown,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"};
 
-  // ── Login ──
   if(!authed) return (
-    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,#F5EDE3,#E8D5BF)`,display:"flex",alignItems:"center",justifyContent:"center",padding:R.pad,fontFamily:F1}}>
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,#F5EDE3,#E8D5BF)`,display:"flex",alignItems:"center",justifyContent:"center",padding:R.pad}}>
       <link href={FONTS_LINK} rel="stylesheet"/>
       <div style={{background:"rgba(255,255,255,0.9)",borderRadius:20,padding:R.isMobile?"28px 20px":"44px 36px",width:"100%",maxWidth:400,boxShadow:`0 8px 40px rgba(107,66,38,0.1)`}}>
         <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{fontSize:R.isMobile?40:52,marginBottom:8}}>🏛️</div>
+          <div style={{fontSize:52,marginBottom:8}}>🏛️</div>
           <h1 style={{fontFamily:F1,fontSize:R.isMobile?24:30,fontWeight:500,color:C.brownDark,margin:0}}>Super Admin</h1>
           <p style={{fontFamily:F2,fontSize:13,color:C.brownLight,marginTop:4}}>Panneau de contrôle centralisé</p>
         </div>
@@ -176,11 +158,19 @@ export default function App() {
 
   const selectedHotel = hotels.find(h=>h.id===selected);
 
+  const Modal = ({children,onClose}) => (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:R.isMobile?"flex-end":"center",justifyContent:"center",zIndex:1000,padding:R.isMobile?0:20}}>
+      <div style={{background:"white",borderRadius:R.isMobile?"20px 20px 0 0":"20px",padding:R.isMobile?"24px 20px":"28px",width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto"}}>
+        {children}
+      </div>
+    </div>
+  );
+
   return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:F1}}>
       <link href={FONTS_LINK} rel="stylesheet"/>
 
-      {toast&&<div style={{position:"fixed",top:20,left:"50%",transform:"translateX(-50%)",zIndex:999,padding:"12px 24px",borderRadius:14,fontFamily:F2,fontSize:13,fontWeight:600,color:"white",background:toast.t==="success"?`linear-gradient(135deg,${C.success},#3d9b6e)`:`linear-gradient(135deg,${C.error},#c04040)`,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",whiteSpace:"nowrap"}}>{toast.m}</div>}
+      {toast&&<div style={{position:"fixed",top:20,left:"50%",transform:"translateX(-50%)",zIndex:9999,padding:"12px 24px",borderRadius:14,fontFamily:F2,fontSize:13,fontWeight:600,color:"white",background:toast.t==="success"?`linear-gradient(135deg,${C.success},#3d9b6e)`:`linear-gradient(135deg,${C.error},#c04040)`,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",whiteSpace:"nowrap"}}>{toast.m}</div>}
 
       {/* Header */}
       <div style={{background:"rgba(255,255,255,0.95)",backdropFilter:"blur(12px)",borderBottom:`1px solid ${C.border}`,padding:R.isMobile?"12px 16px":"16px 32px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
@@ -199,33 +189,59 @@ export default function App() {
 
       <div style={{padding:R.pad,maxWidth:R.maxW,margin:"0 auto"}}>
 
-        {/* Add hotel modal */}
+        {/* Modal Ajouter */}
         {showAddHotel&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:R.isMobile?"flex-end":"center",justifyContent:"center",zIndex:1000,padding:R.isMobile?0:20}}>
-            <div style={{background:"white",borderRadius:R.isMobile?"20px 20px 0 0":"20px",padding:R.isMobile?"24px 20px":"28px",width:"100%",maxWidth:440}}>
-              <h3 style={{fontFamily:F1,fontSize:20,color:C.brownDark,margin:"0 0 20px"}}>➕ Nouvel établissement</h3>
-              <div style={{display:"grid",gap:12,marginBottom:20}}>
-                <div><label style={lbl}>Nom *</label><input value={newHotel.name} onChange={e=>setNewHotel(p=>({...p,name:e.target.value}))} placeholder="Ex: Hôtel Le Royal" style={inp}/></div>
-                <div><label style={lbl}>Localisation</label><input value={newHotel.location} onChange={e=>setNewHotel(p=>({...p,location:e.target.value}))} placeholder="Ex: Lyon" style={inp}/></div>
-                <div><label style={lbl}>URL de l'app</label><input value={newHotel.url} onChange={e=>setNewHotel(p=>({...p,url:e.target.value}))} placeholder="https://..." style={inp}/></div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  <div><label style={lbl}>Plan</label>
-                    <select value={newHotel.plan} onChange={e=>setNewHotel(p=>({...p,plan:e.target.value}))} style={inp}>
-                      {PLANS.map(p=><option key={p.id} value={p.id}>{p.label}</option>)}
-                    </select>
-                  </div>
-                  <div><label style={lbl}>Max utilisateurs</label><input type="number" value={newHotel.maxUsers} onChange={e=>setNewHotel(p=>({...p,maxUsers:parseInt(e.target.value)||5}))} style={inp}/></div>
+          <Modal onClose={()=>setShowAddHotel(false)}>
+            <h3 style={{fontFamily:F1,fontSize:20,color:C.brownDark,margin:"0 0 20px"}}>➕ Nouvel établissement</h3>
+            <div style={{display:"grid",gap:12,marginBottom:20}}>
+              <div><label style={lbl}>Nom *</label><input value={newHotel.name} onChange={e=>setNewHotel(p=>({...p,name:e.target.value}))} placeholder="Ex: Hôtel Le Royal" style={inp}/></div>
+              <div><label style={lbl}>Localisation</label><input value={newHotel.location} onChange={e=>setNewHotel(p=>({...p,location:e.target.value}))} placeholder="Ex: Lyon" style={inp}/></div>
+              <div><label style={lbl}>URL de l'app</label><input value={newHotel.url} onChange={e=>setNewHotel(p=>({...p,url:e.target.value}))} placeholder="https://..." style={inp}/></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div><label style={lbl}>Plan</label>
+                  <select value={newHotel.plan} onChange={e=>setNewHotel(p=>({...p,plan:e.target.value}))} style={inp}>
+                    {PLANS.map(p=><option key={p.id} value={p.id}>{p.label} — {p.price}</option>)}
+                  </select>
                 </div>
-              </div>
-              <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>setShowAddHotel(false)} style={{flex:1,padding:"12px",borderRadius:10,border:`1.5px solid ${C.border}`,background:"white",fontFamily:F2,fontSize:14,cursor:"pointer",color:C.brownLight}}>Annuler</button>
-                <button onClick={addHotel} style={{flex:1,padding:"12px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.brown},${C.brownDark})`,color:"white",fontFamily:F2,fontSize:14,fontWeight:600,cursor:"pointer"}}>Créer</button>
+                <div><label style={lbl}>Max utilisateurs</label><input type="number" value={newHotel.maxUsers} onChange={e=>setNewHotel(p=>({...p,maxUsers:parseInt(e.target.value)||5}))} style={inp}/></div>
               </div>
             </div>
-          </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setShowAddHotel(false)} style={{flex:1,padding:"12px",borderRadius:10,border:`1.5px solid ${C.border}`,background:"white",fontFamily:F2,fontSize:14,cursor:"pointer",color:C.brownLight}}>Annuler</button>
+              <button onClick={addHotel} style={{flex:1,padding:"12px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.brown},${C.brownDark})`,color:"white",fontFamily:F2,fontSize:14,fontWeight:600,cursor:"pointer"}}>Créer</button>
+            </div>
+          </Modal>
         )}
 
-        {/* Hotels list */}
+        {/* Modal Éditer */}
+        {editHotel&&(
+          <Modal onClose={()=>setEditHotel(null)}>
+            <h3 style={{fontFamily:F1,fontSize:20,color:C.brownDark,margin:"0 0 20px"}}>✏️ Modifier — {editHotel.name}</h3>
+            <div style={{display:"grid",gap:12,marginBottom:20}}>
+              <div><label style={lbl}>Nom</label><input value={editHotel.name} onChange={e=>setEditHotel(p=>({...p,name:e.target.value}))} style={inp}/></div>
+              <div><label style={lbl}>Localisation</label><input value={editHotel.location||""} onChange={e=>setEditHotel(p=>({...p,location:e.target.value}))} style={inp}/></div>
+              <div><label style={lbl}>URL de l'app</label><input value={editHotel.url||""} onChange={e=>setEditHotel(p=>({...p,url:e.target.value}))} style={inp}/></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div><label style={lbl}>Plan</label>
+                  <select value={editHotel.plan||"starter"} onChange={e=>setEditHotel(p=>({...p,plan:e.target.value}))} style={inp}>
+                    {PLANS.map(p=><option key={p.id} value={p.id}>{p.label} — {p.price}</option>)}
+                  </select>
+                </div>
+                <div><label style={lbl}>Max utilisateurs</label><input type="number" value={editHotel.maxUsers||5} onChange={e=>setEditHotel(p=>({...p,maxUsers:parseInt(e.target.value)||5}))} style={inp}/></div>
+              </div>
+              <div><label style={lbl}>Date d'expiration</label>
+                <input type="date" value={editHotel.expiresAt?new Date(editHotel.expiresAt).toISOString().slice(0,10):""} onChange={e=>setEditHotel(p=>({...p,expiresAt:e.target.value?new Date(e.target.value).getTime():null}))} style={inp}/>
+                <span style={{fontFamily:F2,fontSize:11,color:C.brownLight,marginTop:4,display:"block"}}>Laisser vide pour pas d'expiration</span>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setEditHotel(null)} style={{flex:1,padding:"12px",borderRadius:10,border:`1.5px solid ${C.border}`,background:"white",fontFamily:F2,fontSize:14,cursor:"pointer",color:C.brownLight}}>Annuler</button>
+              <button onClick={saveEditHotel} style={{flex:1,padding:"12px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.brown},${C.brownDark})`,color:"white",fontFamily:F2,fontSize:14,fontWeight:600,cursor:"pointer"}}>💾 Enregistrer</button>
+            </div>
+          </Modal>
+        )}
+
+        {/* Liste des hôtels */}
         {!selected&&(
           <>
             <div style={{display:"grid",gridTemplateColumns:`repeat(${R.cols},1fr)`,gap:16,marginBottom:24}}>
@@ -244,6 +260,7 @@ export default function App() {
 
             {hotels.map(h=>{
               const plan = PLANS.find(p=>p.id===h.plan)||PLANS[0];
+              const expired = h.expiresAt && Date.now() > h.expiresAt;
               return(
                 <div key={h.id} style={{background:"rgba(255,255,255,0.9)",borderRadius:16,padding:R.isMobile?"16px":"20px 24px",marginBottom:12,boxShadow:`0 2px 10px ${C.shadow}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
@@ -252,16 +269,17 @@ export default function App() {
                         <span style={{fontFamily:F1,fontWeight:700,fontSize:R.isMobile?16:18,color:C.brownDark}}>{h.name}</span>
                         <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:plan.color+"20",color:plan.color}}>{plan.label}</span>
                         <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:h.active?C.successBg:C.errorBg,color:h.active?C.success:C.error}}>{h.active?"🟢 Actif":"🔴 Inactif"}</span>
+                        {expired&&<span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:C.warningBg,color:C.warning}}>⏰ Expiré</span>}
                       </div>
                       <div style={{fontFamily:F2,fontSize:12,color:C.brownLight}}>📍 {h.location} · {h.modules.length} modules · max {h.maxUsers} users</div>
+                      {h.expiresAt&&<div style={{fontFamily:F2,fontSize:11,color:expired?C.error:C.brownLight,marginTop:2}}>🗓 Expire le {new Date(h.expiresAt).toLocaleDateString("fr-FR")}</div>}
                       {h.url&&!R.isMobile&&<a href={h.url} target="_blank" rel="noopener noreferrer" style={{fontFamily:F2,fontSize:11,color:C.info,marginTop:4,display:"block"}}>🔗 {h.url}</a>}
                     </div>
-                    <div style={{display:"flex",flexDirection:R.isMobile?"column":"row",gap:8,flexShrink:0}}>
-                      <button onClick={()=>toggleHotel(h.id)} style={{padding:"8px 12px",borderRadius:10,border:"none",background:h.active?C.errorBg:C.successBg,color:h.active?C.error:C.success,fontFamily:F2,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
-                        {h.active?"⏸":"▶"} {!R.isMobile&&(h.active?"Suspendre":"Activer")}
-                      </button>
-                      <button onClick={()=>setSelected(h.id)} style={{padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.border}`,background:"white",fontFamily:F2,fontSize:12,fontWeight:600,cursor:"pointer",color:C.brownDark}}>
-                        ⚙️ {!R.isMobile&&"Gérer"}
+                    <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+                      <button onClick={()=>setSelected(h.id)} style={{padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.border}`,background:"white",fontFamily:F2,fontSize:12,fontWeight:600,cursor:"pointer",color:C.brownDark}}>⚙️ {!R.isMobile&&"Gérer"}</button>
+                      <button onClick={()=>setEditHotel({...h})} style={{padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.border}`,background:"white",fontFamily:F2,fontSize:12,fontWeight:600,cursor:"pointer",color:C.brownDark}}>✏️ {!R.isMobile&&"Modifier"}</button>
+                      <button onClick={()=>toggleHotel(h.id)} style={{padding:"8px 12px",borderRadius:10,border:"none",background:h.active?C.errorBg:C.successBg,color:h.active?C.error:C.success,fontFamily:F2,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                        {h.active?"⏸":"▶"}{!R.isMobile&&(h.active?" Suspendre":" Activer")}
                       </button>
                     </div>
                   </div>
@@ -271,18 +289,21 @@ export default function App() {
           </>
         )}
 
-        {/* Hotel detail */}
+        {/* Détail hôtel — modules */}
         {selected&&selectedHotel&&(
           <>
             <div style={{background:"rgba(255,255,255,0.9)",borderRadius:16,padding:R.isMobile?"16px":"20px 24px",marginBottom:20,boxShadow:`0 2px 10px ${C.shadow}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:R.isMobile?"flex-start":"center",gap:12,marginBottom:16,flexDirection:R.isMobile?"column":"row"}}>
                 <div>
                   <h2 style={{fontFamily:F1,fontSize:R.isMobile?20:24,fontWeight:600,color:C.brownDark,margin:0}}>{selectedHotel.name}</h2>
-                  <p style={{fontFamily:F2,fontSize:12,color:C.brownLight,margin:"4px 0 0"}}>📍 {selectedHotel.location}</p>
+                  <p style={{fontFamily:F2,fontSize:12,color:C.brownLight,margin:"4px 0 0"}}>📍 {selectedHotel.location} · Plan {PLANS.find(p=>p.id===selectedHotel.plan)?.label}</p>
                 </div>
-                <button onClick={()=>toggleHotel(selectedHotel.id)} style={{padding:"10px 20px",borderRadius:12,border:"none",background:selectedHotel.active?C.errorBg:C.successBg,color:selectedHotel.active?C.error:C.success,fontFamily:F2,fontSize:13,fontWeight:700,cursor:"pointer",alignSelf:R.isMobile?"flex-start":"auto"}}>
-                  {selectedHotel.active?"⏸ Suspendre l'accès":"▶ Réactiver l'accès"}
-                </button>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <button onClick={()=>setEditHotel({...selectedHotel})} style={{padding:"10px 16px",borderRadius:12,border:`1.5px solid ${C.border}`,background:"white",fontFamily:F2,fontSize:13,fontWeight:600,cursor:"pointer",color:C.brownDark}}>✏️ Modifier</button>
+                  <button onClick={()=>toggleHotel(selectedHotel.id)} style={{padding:"10px 16px",borderRadius:12,border:"none",background:selectedHotel.active?C.errorBg:C.successBg,color:selectedHotel.active?C.error:C.success,fontFamily:F2,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    {selectedHotel.active?"⏸ Suspendre":"▶ Réactiver"}
+                  </button>
+                </div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
                 {[
@@ -313,7 +334,7 @@ export default function App() {
                     <div key={m.id} onClick={()=>toggleModule(selectedHotel.id,m.id)} style={{display:"flex",alignItems:"center",gap:10,padding:R.isMobile?"10px 12px":"12px 14px",borderRadius:12,cursor:"pointer",border:`1.5px solid ${active?C.brown:C.border}`,background:active?C.accentLight:"white",transition:"all .15s"}}>
                       <span style={{fontSize:R.isMobile?18:20}}>{m.icon}</span>
                       <span style={{fontFamily:F2,fontSize:R.isMobile?12:13,fontWeight:600,color:active?C.brownDark:C.brownLight,flex:1}}>{m.label}</span>
-                      <div style={{width:34,height:19,borderRadius:10,background:active?C.success:C.border,position:"relative",flexShrink:0}}>
+                      <div style={{width:34,height:19,borderRadius:10,background:active?C.success:C.border,position:"relative",flexShrink:0,transition:"0.2s"}}>
                         <div style={{width:15,height:15,borderRadius:8,background:"white",position:"absolute",top:2,left:active?17:2,transition:"0.2s"}}/>
                       </div>
                     </div>
