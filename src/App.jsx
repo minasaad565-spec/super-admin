@@ -28,7 +28,10 @@ const T = {
 const F = "'DM Sans', sans-serif";
 const FM = "'DM Mono', monospace";
 const FD = "'Playfair Display', serif";
-const PW = "superadmin2025";
+const USERS = [
+  { username:"mina", password:"Mina7599", name:"Mina" },
+  { username:"mathias", password:"Mathias1234", name:"Mathias" },
+];
 
 const MODULES = [
   { id:"housekeeping", label:"Housekeeping", icon:"🛏️", desc:"Gestion des chambres" },
@@ -84,8 +87,10 @@ export default function App() {
   const tab = w >= 640 && w < 1024;
   const desk = w >= 1024;
 
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState(()=>{ try{ return !!localStorage.getItem("sa-session"); }catch(e){ return false; } });
+  const [currentUser, setCurrentUser] = useState(()=>{ try{ return localStorage.getItem("sa-user")||""; }catch(e){ return ""; } });
   const [pw, setPw] = useState("");
+  const [username, setUsername] = useState("");
   const [pwErr, setPwErr] = useState(false);
   const [hotels, setHotels] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -163,12 +168,14 @@ export default function App() {
           <p style={{ fontFamily:F, fontSize:13, color:T.textMuted }}>Accès super administrateur</p>
         </div>
         <div style={{ background:T.bgCard, borderRadius:16, padding:24, border:`1px solid ${T.border}` }}>
+          <label style={lbl}>Identifiant</label>
+          <input type="text" value={username} onChange={e=>{setUsername(e.target.value);setPwErr(false);}} placeholder="mina / mathias" style={{...inp, marginBottom:14}} autoCapitalize="none" autoCorrect="off"/>
           <label style={lbl}>Mot de passe</label>
           <input type="password" value={pw} onChange={e=>{setPw(e.target.value);setPwErr(false);}}
-            onKeyDown={e=>{if(e.key==="Enter"){if(pw===PW)setAuthed(true);else setPwErr(true);}}}
+            onKeyDown={e=>{if(e.key==="Enter"){ const u=USERS.find(u=>u.username===username&&u.password===pw); if(u){ setAuthed(true); setCurrentUser(u.name); try{localStorage.setItem("sa-session","1");localStorage.setItem("sa-user",u.name);}catch(e){} }else setPwErr(true); }}}
             placeholder="••••••••••" style={{...inp, marginBottom:pwErr?8:16, border:`1px solid ${pwErr?T.red:T.border}`, letterSpacing:pw?"0.18em":"0"}}/>
           {pwErr && <p style={{ fontFamily:F, fontSize:12, color:T.red, marginBottom:14 }}>Mot de passe incorrect</p>}
-          <button onClick={()=>{if(pw===PW)setAuthed(true);else setPwErr(true);}} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:`linear-gradient(135deg,${T.accent},#818CF8)`, color:"white", fontSize:15, fontFamily:F, fontWeight:600, cursor:"pointer", letterSpacing:"0.01em", boxShadow:`0 4px 24px rgba(99,102,241,0.3)` }}>
+          <button onClick={()=>{ const u=USERS.find(u=>u.username===username&&u.password===pw); if(u){ setAuthed(true); setCurrentUser(u.name); try{localStorage.setItem("sa-session","1");localStorage.setItem("sa-user",u.name);}catch(e){} }else setPwErr(true); }} style={{ width:"100%", padding:"13px", borderRadius:10, border:"none", background:`linear-gradient(135deg,${T.accent},#818CF8)`, color:"white", fontSize:15, fontFamily:F, fontWeight:600, cursor:"pointer", letterSpacing:"0.01em", boxShadow:`0 4px 24px rgba(99,102,241,0.3)` }}>
             Accéder
           </button>
         </div>
@@ -241,7 +248,7 @@ export default function App() {
           {!selected && <button onClick={()=>{setForm({name:"",location:"",url:"",plan:"starter",maxUsers:5,expiresAt:null});setModal("add");}} style={{ padding:mob?"8px 12px":"9px 16px", borderRadius:8, border:"none", background:T.accent, color:"white", fontFamily:F, fontSize:mob?12:13, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
             {mob?"+" : "+ Établissement"}
           </button>}
-          <button onClick={()=>setAuthed(false)} style={{ padding:"9px 12px", borderRadius:8, border:`1px solid ${T.border}`, background:"none", fontFamily:FM, fontSize:11, color:T.textMuted, cursor:"pointer" }}>⬅</button>
+          <button onClick={()=>{ setAuthed(false); try{localStorage.removeItem("sa-session");localStorage.removeItem("sa-user");}catch(e){} }} style={{ padding:"9px 12px", borderRadius:8, border:`1px solid ${T.border}`, background:"none", fontFamily:FM, fontSize:11, color:T.textMuted, cursor:"pointer" }}>⬅</button>
         </div>
       </div>
 
